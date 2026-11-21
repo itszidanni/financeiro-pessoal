@@ -153,6 +153,16 @@
     .setup-banner{background:#a78bfa15;border:1px solid #a78bfa40;border-radius:12px;padding:14px 16px;margin:0 0 18px;font-size:12px;color:var(--muted);line-height:1.7}
     .setup-banner b{color:var(--purple);display:block;margin-bottom:4px;font-size:13px}
     .setup-banner code{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:2px 6px;color:var(--text);font-family:monospace;font-size:11px}
+    .month-bar{display:flex;gap:9px;margin-bottom:11px;align-items:center}
+    .month-bar input{flex:1;min-width:0;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:9px;padding:10px 11px;outline:0;min-height:40px}
+    .summary{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+    .summary div{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px}
+    .summary span{display:block;font-size:10px;color:var(--muted);margin-bottom:5px;text-transform:capitalize}
+    .summary b{font-size:14px}
+    .row-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+    .cobrar{background:#25d36618;border:1px solid #25d36640;color:#25d366;font-size:10px;border-radius:7px;padding:7px 8px}
+    .backup{display:flex;gap:9px;padding:0 14px 14px}
+    .backup button{flex:1;border:0;border-radius:9px;padding:12px;font-weight:600;background:var(--surface-3);color:var(--text);font-size:12px}
     @media (min-width:560px){
       main{padding:0 20px 28px}
       .kpis{grid-template-columns:repeat(3,1fr)}
@@ -193,10 +203,17 @@
           <div class="panel-title"><h3>⚠ Cobranças atrasadas</h3><span class="danger-count" id="late-count">0 em atraso</span></div>
           <div id="late-list"><div class="empty"><span>✓</span>Nenhuma cobrança atrasada</div></div>
         </div>
+        <div class="panel">
+          <div class="panel-title"><h3>💾 Backup dos dados</h3></div>
+          <div class="backup"><button type="button" id="btn-export">Exportar</button><button type="button" id="btn-import">Importar</button></div>
+          <input type="file" id="file-import" accept="application/json,.json" hidden>
+        </div>
       </section>
 
       <section class="view" id="vendas-view">
         <div class="section-head"><h2>Vendas</h2><span id="sales-count">0 vendas</span></div>
+        <div class="month-bar"><input type="month" id="month-filter" aria-label="Filtrar por mês"><button type="button" id="month-clear" class="filter">Todos os meses</button></div>
+        <div class="summary" id="month-summary"></div>
         <div class="toolbar">
           <label class="search">⌕<input id="search" placeholder="Buscar cliente ou produto" autocomplete="off"></label>
           <button class="add" id="new-sale" aria-label="Nova venda">+</button>
@@ -214,6 +231,8 @@
 
       <section class="view" id="parcelas-view">
         <div class="section-head"><h2>Parcelas</h2><span id="installment-count">0 contratos</span></div>
+        <div class="filters" id="p-filters"></div>
+        <div class="month-bar"><input type="number" id="custom-days" inputmode="numeric" min="0" placeholder="Vence em quantos dias? (ex: 5)"></div>
         <div id="installments-list"><div class="empty"><span>◌</span>Nenhum boleto ou parcelado</div></div>
       </section>
     </main>
@@ -237,7 +256,7 @@
         <div class="field"><label for="whatsapp">WhatsApp</label><input id="whatsapp" inputmode="tel" placeholder="(21) 99999-9999"></div>
         <div class="field"><label for="modelo">Produto / Modelo *</label><input id="modelo" required placeholder="Ex: iPhone 16 Pro Max"></div>
         <div class="field" id="valor-field"><label for="valor">Valor de venda *</label><input id="valor" required type="number" min="0" step="0.01" placeholder="0,00"></div>
-        <div class="field"><label for="custo">Custo do produto</label><input id="custo" type="number" min="0" step="0.01" placeholder="0,00"></div>
+        <div class="field"><label for="custo">Custo / investimento</label><input id="custo" type="number" min="0" step="0.01" placeholder="Vazio = só lucro"></div>
         <div class="field"><label for="data">Data *</label><input id="data" required type="date"></div>
         <div class="field"><label for="origem">Origem</label>
           <select id="origem">
@@ -279,11 +298,19 @@
           <div class="field"><label for="parcela-valor">Valor da parcela *</label><input id="parcela-valor" type="number" min="0" step="0.01" placeholder="0,00"></div>
           <div class="field"><label for="parcelas-num">Nº de parcelas *</label><input id="parcelas-num" type="number" min="1" max="60" step="1" placeholder="Ex: 7"></div>
           <div class="field"><label for="primeira-parcela">1ª parcela em *</label><input id="primeira-parcela" type="date"></div>
-          <div class="field"><label for="periodicidade">Periodicidade</label>
+          <div class="field"><label for="periodicidade">Vencimento das parcelas</label>
             <select id="periodicidade">
-              <option value="30">Mensal (30d)</option>
-              <option value="7">Semanal (7d)</option>
-              <option value="15">Quinzenal (15d)</option>
+              <option value="mensal">Mensal — mesmo dia do mês (data fixa)</option>
+              <option value="util1">1º dia útil de cada mês</option>
+              <option value="semana">Dia da semana fixo (toda semana)</option>
+              <option value="7">A cada 7 dias</option>
+              <option value="15">A cada 15 dias</option>
+            </select>
+          </div>
+          <div class="field" id="semana-field" style="display:none"><label for="dia-semana">Dia da semana</label>
+            <select id="dia-semana">
+              <option value="1">Segunda</option><option value="2">Terça</option><option value="3">Quarta</option>
+              <option value="4">Quinta</option><option value="5">Sexta</option><option value="6" selected>Sábado</option><option value="0">Domingo</option>
             </select>
           </div>
         </div>
@@ -312,7 +339,7 @@
 
     const db = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
-    let vendas = [], activeFilter = 'Todos', searchText = '', toastTimer;
+    let vendas = [], activeFilter = 'Todos', searchText = '', monthFilter = '', toastTimer;
 
     const $ = id => document.getElementById(id);
     const fmt = n => Number(n || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
@@ -369,15 +396,18 @@
     function renderDashboard() {
       const received = vendas.reduce((sum, v) => sum + confirmedAmount(v), 0);
       const pending = vendas.reduce((sum, v) => sum + (isInstallmentSale(v) ? Math.max(v.valor - confirmedAmount(v), 0) : ['Pendente','Parcial'].includes(v.status) ? v.valor : 0), 0);
-      const profit = vendas.filter(v => moneyOrZero(v.custo) > 0).reduce((s, v) => s + (v.valor - v.custo), 0);
+      const profit = vendas.filter(v => v.status !== 'Cancelado').reduce((s, v) => s + (v.valor - moneyOrZero(v.custo)), 0);
       const now = new Date(), month = vendas.filter(v => { const d = parseDate(v.data); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); }).reduce((s, v) => s + v.valor, 0);
+      const ym = isoToday().slice(0, 7), rp = vendas.map(v => realizedProfit(v, ym));
+      const netMonth = rp.reduce((a, x) => a + x.profit, 0), toRecover = rp.reduce((a, x) => a + x.left, 0);
       const open = vendas.flatMap(v => (v.parcelas || []).filter(p => !p.pago));
       const late = vendas.flatMap(v => (v.parcelas || []).filter(p => !p.pago && days(p.vencimento) < 0).map(p => ({ v, p, d: Math.abs(days(p.vencimento)) }))).sort((a, b) => b.d - a.d);
       $('month-label').textContent = now.toLocaleDateString('pt-BR', { month:'long', year:'numeric' });
       $('kpis').innerHTML = `
         <div class="kpi green"><span class="label">Recebido</span><strong>${fmt(received)}</strong></div>
         <div class="kpi yellow"><span class="label">Pendente</span><strong>${fmt(pending)}</strong></div>
-        <div class="kpi blue"><span class="label">Lucro total</span><strong>${fmt(profit)}</strong></div>
+        <div class="kpi blue"><span class="label">Lucro previsto</span><strong>${fmt(profit)}</strong></div>
+        <div class="kpi green"><span class="label">Lucro líquido do mês</span><strong>${fmt(netMonth)}</strong><span class="sub">Falta recuperar ${fmt(toRecover)} de custo</span></div>
         <div class="kpi purple"><span class="label">Este mês</span><strong>${fmt(month)}</strong></div>
         <div class="kpi yellow"><span class="label">Parcelas em aberto</span><strong>${fmt(open.reduce((s, p) => s + moneyOrZero(p.valor), 0))}</strong><span class="sub">${open.length} ${open.length === 1 ? 'parcela' : 'parcelas'}</span></div>`;
       $('late-count').textContent = `${late.length} em atraso`;
@@ -386,19 +416,33 @@
         : '<div class="empty"><span>✓</span>Nenhuma cobrança atrasada</div>';
     }
 
-    const filters = ['Todos','Pagos','Pendentes','Parcial','Entregue','Quitado'];
+    const DUE = { 'Atrasadas': d => d < 0, 'Hoje': d => d === 0, 'Em 1 dia': d => d === 1, 'Em 2 dias': d => d === 2, 'Em 3 dias': d => d === 3, 'Até 7 dias': d => d >= 0 && d <= 7 };
+    const filters = ['Todos','Pagos','Pendentes','Atrasados','Hoje','Em 1 dia','Em 2 dias','Em 3 dias','Até 7 dias','Parcial','Entregue','Quitado'];
+    function inMonth(v) { return !monthFilter || String(v.data || '').slice(0,7) === monthFilter; }
     function matchesFilter(v) {
+      if (!inMonth(v)) return false;
       if (activeFilter === 'Todos') return true;
+      if (activeFilter === 'Atrasados') return (v.parcelas || []).some(p => !p.pago && days(p.vencimento) < 0);
+      if (DUE[activeFilter]) return (v.parcelas || []).some(p => !p.pago && DUE[activeFilter](days(p.vencimento)));
       if (activeFilter === 'Pagos') return v.status === 'Pago' && !isInstallmentSale(v);
       if (activeFilter === 'Pendentes') return v.status === 'Pendente';
       return v.status === activeFilter;
     }
+    function renderSummary() {
+      const list = vendas.filter(inMonth).filter(v => v.status !== 'Cancelado');
+      const total = list.reduce((s, v) => s + v.valor, 0);
+      const rec = list.reduce((s, v) => s + confirmedAmount(v), 0);
+      const lucro = vendas.reduce((s, v) => s + realizedProfit(v, monthFilter).profit, 0);
+      const label = monthFilter ? new Date(monthFilter + '-15T12:00:00').toLocaleDateString('pt-BR', { month:'long', year:'numeric' }) : 'Todos os meses';
+      $('month-summary').innerHTML = `<div><span>${label}</span><b>${list.length} ${list.length === 1 ? 'venda' : 'vendas'}</b></div><div><span>Total vendido</span><b>${fmt(total)}</b></div><div><span>Recebido</span><b style="color:var(--green)">${fmt(rec)}</b></div><div><span>Pendente</span><b style="color:var(--yellow)">${fmt(Math.max(total - rec, 0))}</b></div><div style="grid-column:1/-1"><span>Lucro líquido realizado</span><b style="color:var(--blue)">${fmt(lucro)}</b></div>`;
+    }
     function renderSales() {
+      renderSummary();
       $('filters').innerHTML = filters.map(f => `<button class="filter ${f === activeFilter ? 'active' : ''}" data-filter="${f}">${f}</button>`).join('');
       const list = vendas.filter(matchesFilter).filter(v => `${v.cliente} ${v.modelo}`.toLowerCase().includes(searchText.toLowerCase())).sort((a, b) => (b.ts || 0) - (a.ts || 0));
       $('sales-count').textContent = `${list.length} ${list.length === 1 ? 'venda' : 'vendas'}`;
       $('sales-list').innerHTML = list.length ? list.map(v => {
-        const profit = v.custo > 0 ? v.valor - v.custo : null;
+        const profit = v.status === 'Cancelado' ? null : v.valor - moneyOrZero(v.custo);
         const [paid, total] = installmentProgress(v);
         return `<article class="sale-card">
           <div class="sale-main" data-expand-sale="${v.id}">
@@ -424,6 +468,7 @@
             ${!isInstallmentSale(v) ? `<button class="primary" data-action="toggle" data-id="${v.id}">${v.status === 'Pago' ? 'Marcar pendente' : 'Marcar pago'}</button>` : ''}
             <button data-action="edit" data-id="${v.id}">Editar</button>
             ${v.whatsapp ? `<button data-action="whatsapp" data-id="${v.id}">WhatsApp</button>` : ''}
+            ${v.whatsapp && !isInstallmentSale(v) && ['Pendente','Parcial'].includes(v.status) ? `<button data-action="cobrar" data-id="${v.id}">Cobrar</button>` : ''}
             <button class="delete" data-action="delete" data-id="${v.id}">Excluir</button>
           </div>
         </article>`;
@@ -436,13 +481,23 @@
       if (d <= 3) return 'near';
       return '';
     }
+    let parcelFilter = 'Todas', customDays = '';
+    function parcelTest() {
+      if (customDays !== '') { const n = Number(customDays); return d => d === n; }
+      return parcelFilter === 'Todas' ? null : DUE[parcelFilter];
+    }
     function renderInstallments() {
-      const list = vendas.filter(isInstallmentSale).sort((a, b) => (b.ts || 0) - (a.ts || 0));
-      $('installment-count').textContent = `${list.length} ${list.length === 1 ? 'contrato' : 'contratos'}`;
+      $('p-filters').innerHTML = ['Todas','Atrasadas','Hoje','Em 1 dia','Em 2 dias','Em 3 dias','Até 7 dias'].map(f => `<button class="filter ${f === parcelFilter && customDays === '' ? 'active' : ''}" data-pfilter="${f}">${f}</button>`).join('');
+      const test = parcelTest();
+      const list = vendas.filter(isInstallmentSale).filter(v => !test || (v.parcelas || []).some(p => !p.pago && test(days(p.vencimento)))).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      if (test) {
+        const m = list.flatMap(v => (v.parcelas || []).filter(p => !p.pago && test(days(p.vencimento))));
+        $('installment-count').textContent = `${m.length} ${m.length === 1 ? 'parcela' : 'parcelas'} · ${fmt(m.reduce((a, p) => a + moneyOrZero(p.valor), 0))}`;
+      } else $('installment-count').textContent = `${list.length} ${list.length === 1 ? 'contrato' : 'contratos'}`;
       $('installments-list').innerHTML = list.length ? list.map(v => {
         const [paid, total] = installmentProgress(v);
         const rest = (v.parcelas || []).filter(p => !p.pago).reduce((s, p) => s + moneyOrZero(p.valor), 0);
-        return `<article class="accordion">
+        return `<article class="accordion ${test ? 'open' : ''}">
           <button class="acc-head">
             <div><b>${esc(v.cliente)}</b><span>${esc(v.modelo)} · ${esc(v.pagamento)}</span></div>
             <div class="acc-value"><b>${paid}/${total} pagas</b><span>${fmt(rest)} restante</span></div>
@@ -450,7 +505,7 @@
           </button>
           <div class="acc-body">
             ${v.entrada > 0 ? `<div class="entry">Entrada <strong>${fmt(v.entrada)}</strong></div>` : ''}
-            ${(v.parcelas || []).map(p => `
+            ${(v.parcelas || []).filter(p => !test || (!p.pago && test(days(p.vencimento)))).map(p => `
               <div class="parcel ${parcelClass(p)}">
                 <span class="parcel-no">${p.numero}</span>
                 <div class="parcel-info">
@@ -459,7 +514,7 @@
                 </div>
                 ${p.pago
                   ? `<button class="undo" data-undo-sale="${v.id}" data-undo-no="${p.numero}">Desfazer</button>`
-                  : `<button class="confirm" data-pay-sale="${v.id}" data-pay-no="${p.numero}">Confirmar pagamento</button>`}
+                  : `<div class="row-actions">${v.whatsapp ? `<button class="cobrar" data-charge-sale="${v.id}" data-charge-no="${p.numero}">Cobrar</button>` : ''}<button class="confirm" data-pay-sale="${v.id}" data-pay-no="${p.numero}">Confirmar</button></div>`}
               </div>`).join('')}
           </div>
         </article>`;
@@ -530,6 +585,49 @@
       if (await save({ id, parcelas, status })) { v.parcelas = parcelas; v.status = status; render(); notify('Pagamento desfeito'); }
     }
 
+    function waLink(v, text) {
+      let n = String(v.whatsapp || '').replace(/\D/g, '');
+      if (!n) { notify('Cliente sem WhatsApp'); return; }
+      if (!(n.startsWith('55') && n.length > 11)) n = '55' + n;
+      window.open('https://wa.me/' + n + '?text=' + encodeURIComponent(text), '_blank', 'noopener');
+    }
+    function chargeParcel(id, no) {
+      const v = vendas.find(x => x.id === id);
+      const p = v && v.parcelas.find(x => Number(x.numero) === Number(no));
+      if (!p) return;
+      const d = days(p.vencimento), nome = v.cliente.split(' ')[0];
+      const quando = d < 0 ? `venceu em ${dateText(p.vencimento)}` : d === 0 ? 'vence hoje' : `vence em ${dateText(p.vencimento)}`;
+      waLink(v, `Olá, ${nome}! Tudo bem? Passando para lembrar da parcela ${p.numero}/${p.total} de ${fmt(p.valor)} (${v.modelo}), que ${quando}. Se já pagou, me envie o comprovante, por favor. Obrigado!`);
+    }
+    function chargeSale(id) {
+      const v = vendas.find(x => x.id === id);
+      if (!v) return;
+      waLink(v, `Olá, ${v.cliente.split(' ')[0]}! Tudo bem? Passando para lembrar do pagamento de ${fmt(v.valor)} referente a ${v.modelo}. Pode me confirmar quando realizar? Obrigado!`);
+    }
+    function exportBackup() {
+      const blob = new Blob([JSON.stringify({ app:'financeiro-pessoal', exportado_em:new Date().toISOString(), vendas }, null, 2)], { type:'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `backup-financeiro-${isoToday()}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+      notify('Backup exportado');
+    }
+    async function importBackup(file) {
+      if (!db) return;
+      try {
+        const json = JSON.parse(await file.text());
+        const list = Array.isArray(json) ? json : json.vendas;
+        if (!Array.isArray(list) || !list.length) throw new Error('Arquivo inválido');
+        if (!confirm(`Importar ${list.length} vendas? Vendas com o mesmo ID serão atualizadas.`)) return;
+        setSync('working', 'Importando...');
+        const rows = list.map(({ created_at, ...r }) => r);
+        const { error } = await db.from('vendas').upsert(rows);
+        if (error) throw error;
+        await load(); notify('Backup importado');
+      } catch (err) { notify('Erro: ' + err.message); setSync('error', 'Erro ao importar'); }
+    }
+
     function openModal(v) {
       $('sale-form').reset();
       $('sale-id').value = '';
@@ -543,7 +641,9 @@
           $('parcelas-num').value = v.parcelas.length;
           $('primeira-parcela').value = v.parcelas[0].vencimento;
           const interval = v.parcelas.length > 1 ? daysBetween(v.parcelas[0].vencimento, v.parcelas[1].vencimento) : 30;
-          $('periodicidade').value = [7, 15, 30].includes(interval) ? String(interval) : '30';
+          const p0 = v.parcelas[0];
+          $('periodicidade').value = p0.regra || ([7, 15].includes(interval) ? String(interval) : 'mensal');
+          if (p0.dia_semana != null) $('dia-semana').value = String(p0.dia_semana);
         }
       }
       toggleExtras();
@@ -562,6 +662,7 @@
     function toggleExtras() {
       const on = ['Boleto','Parcelado'].includes($('pagamento').value);
       $('installment-extras').classList.toggle('show', on);
+      $('semana-field').style.display = $('periodicidade').value === 'semana' ? '' : 'none';
       $('valor-field').style.display = on ? 'none' : '';
       $('status-field').style.display = on ? 'none' : '';
       $('valor').disabled = on; $('valor').required = !on;
@@ -569,14 +670,59 @@
       if (on) updateInstallmentTotal();
     }
 
+    // <helpers>
+    const iso = d => d.toLocaleDateString('en-CA');
+    function addMonthsClamped(base, n, day) {
+      const y = base.getFullYear(), m = base.getMonth() + n, last = new Date(y, m + 1, 0).getDate();
+      return new Date(y, m, Math.min(day, last), 12);
+    }
+    function holidaySet(y) {
+      const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+      const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, mm = Math.floor((a + 11 * h + 22 * l) / 451);
+      const month = Math.floor((h + l - 7 * mm + 114) / 31), day = ((h + l - 7 * mm + 114) % 31) + 1;
+      const gf = new Date(y, month - 1, day - 2, 12);
+      return new Set(['01-01','04-21','05-01','09-07','10-12','11-02','11-15','11-20','12-25', iso(gf).slice(5)]);
+    }
+    function firstBusinessDay(y, m) {
+      const d = new Date(y, m, 1, 12), hol = holidaySet(d.getFullYear());
+      while (d.getDay() === 0 || d.getDay() === 6 || hol.has(iso(d).slice(5))) d.setDate(d.getDate() + 1);
+      return d;
+    }
+    function receipts(v) {
+      if (isInstallmentSale(v)) {
+        const r = [];
+        if (v.entrada > 0) r.push({ d: v.data, a: v.entrada });
+        (v.parcelas || []).filter(p => p.pago).forEach(p => r.push({ d: p.data_pagamento || p.vencimento, a: moneyOrZero(p.valor) }));
+        return r.sort((x, y) => String(x.d).localeCompare(String(y.d)));
+      }
+      return ['Pago','Quitado','Entregue'].includes(v.status) ? [{ d: v.data, a: v.valor }] : [];
+    }
+    // Lucro só conta depois que os recebimentos cobrem o custo. ym = 'AAAA-MM' (vazio = todos os meses)
+    function realizedProfit(v, ym) {
+      if (v.status === 'Cancelado') return { profit: 0, left: 0 };
+      let left = Math.max(moneyOrZero(v.custo), 0), profit = 0;
+      receipts(v).forEach(({ d, a }) => {
+        const take = Math.min(left, a);
+        left -= take;
+        if (!ym || String(d).slice(0, 7) === ym) profit += a - take;
+      });
+      return { profit, left };
+    }
+    // </helpers>
+
     function buildInstallments() {
       if (!['Boleto','Parcelado'].includes($('pagamento').value)) return [];
-      const value = moneyOrZero($('parcela-valor').value), total = Number($('parcelas-num').value), first = $('primeira-parcela').value, period = Number($('periodicidade').value);
+      const value = moneyOrZero($('parcela-valor').value), total = Number($('parcelas-num').value), first = $('primeira-parcela').value;
+      const rule = $('periodicidade').value, wd = Number($('dia-semana').value);
       if (!value || !total || !first) throw new Error('Preencha os detalhes do parcelamento.');
+      const base = parseDate(first);
       return Array.from({ length: total }, (_, i) => {
-        const d = parseDate(first);
-        d.setDate(d.getDate() + period * i);
-        return { numero: i + 1, total, vencimento: d.toLocaleDateString('en-CA'), valor: value, pago: false, data_pagamento: null };
+        let d;
+        if (rule === 'mensal') d = addMonthsClamped(base, i, base.getDate());
+        else if (rule === 'util1') d = i === 0 ? new Date(base) : firstBusinessDay(base.getFullYear(), base.getMonth() + i);
+        else if (rule === 'semana') { d = new Date(base); d.setDate(d.getDate() + ((wd - base.getDay() + 7) % 7) + 7 * i); }
+        else { d = new Date(base); d.setDate(d.getDate() + Number(rule) * i); }
+        return { numero: i + 1, total, vencimento: iso(d), valor: value, pago: false, data_pagamento: null, regra: rule, dia_semana: wd };
       });
     }
 
@@ -629,6 +775,8 @@
         document.querySelectorAll('.view').forEach(x => x.classList.toggle('active', x.id === name + '-view'));
         return;
       }
+      const pf = e.target.closest('[data-pfilter]');
+      if (pf) { parcelFilter = pf.dataset.pfilter; customDays = ''; $('custom-days').value = ''; renderInstallments(); return; }
       const filter = e.target.closest('[data-filter]');
       if (filter) { activeFilter = filter.dataset.filter; renderSales(); return; }
       const action = e.target.closest('[data-action]');
@@ -637,6 +785,7 @@
         if (action.dataset.action === 'toggle') updateStatus(id);
         if (action.dataset.action === 'edit') openModal(vendas.find(v => v.id === id));
         if (action.dataset.action === 'whatsapp') openWhatsApp(id);
+        if (action.dataset.action === 'cobrar') chargeSale(id);
         if (action.dataset.action === 'delete') removeSale(id);
         return;
       }
@@ -644,6 +793,8 @@
       if (sale) { sale.parentElement.classList.toggle('expanded'); return; }
       const head = e.target.closest('.acc-head');
       if (head) { head.parentElement.classList.toggle('open'); return; }
+      const charge = e.target.closest('[data-charge-sale]');
+      if (charge) { chargeParcel(charge.dataset.chargeSale, charge.dataset.chargeNo); return; }
       const pay = e.target.closest('[data-pay-sale]');
       if (pay) { confirmPayment(pay.dataset.paySale, pay.dataset.payNo); return; }
       const undo = e.target.closest('[data-undo-sale]');
@@ -655,8 +806,15 @@
     $('cancel-modal').addEventListener('click', closeModal);
     $('sale-modal').addEventListener('click', e => { if (e.target === $('sale-modal')) closeModal(); });
     $('pagamento').addEventListener('change', toggleExtras);
+    $('periodicidade').addEventListener('change', toggleExtras);
     ['entrada','parcela-valor','parcelas-num'].forEach(id => $(id).addEventListener('input', updateInstallmentTotal));
     $('search').addEventListener('input', e => { searchText = e.target.value; renderSales(); });
+    $('month-filter').addEventListener('input', e => { monthFilter = e.target.value; renderSales(); });
+    $('month-clear').addEventListener('click', () => { monthFilter = ''; $('month-filter').value = ''; renderSales(); });
+    $('custom-days').addEventListener('input', e => { customDays = e.target.value; renderInstallments(); });
+    $('btn-export').addEventListener('click', exportBackup);
+    $('btn-import').addEventListener('click', () => $('file-import').click());
+    $('file-import').addEventListener('change', e => { const f = e.target.files[0]; if (f) importBackup(f); e.target.value = ''; });
 
     // Sincronização em tempo real
     if (db) {
