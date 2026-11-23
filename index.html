@@ -163,6 +163,17 @@
     .cobrar{background:#25d36618;border:1px solid #25d36640;color:#25d366;font-size:10px;border-radius:7px;padding:7px 8px}
     .backup{display:flex;gap:9px;padding:0 14px 14px}
     .backup button{flex:1;border:0;border-radius:9px;padding:12px;font-weight:600;background:var(--surface-3);color:var(--text);font-size:12px}
+    .login{position:fixed;inset:0;z-index:50;background:var(--bg);display:none;align-items:center;justify-content:center;padding:20px}
+    .login.show{display:flex}
+    .login-box{width:min(360px,100%);display:grid;gap:12px;text-align:center}
+    .login-box .logo{margin:0 auto 4px;width:48px;height:48px;font-size:16px}
+    .login-box h2{margin:0;font-size:20px}
+    .login-box small{color:var(--muted);margin-bottom:8px}
+    .login-box input{background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:13px;outline:0;font-size:16px;width:100%}
+    .login-box input:focus{border-color:var(--blue)}
+    .login-box button{border:0;border-radius:10px;padding:13px;font-weight:700;background:var(--blue);color:#fff;font-size:15px}
+    #login-error{color:var(--red);font-size:12px;margin:0;min-height:16px}
+    .logout{background:var(--surface-3);border:0;color:var(--muted);border-radius:7px;padding:6px 9px;font-size:11px}
     @media (min-width:560px){
       main{padding:0 20px 28px}
       .kpis{grid-template-columns:repeat(3,1fr)}
@@ -181,7 +192,7 @@
         <div class="logo">ZD</div>
         <div><h1>Financeiro Pessoal</h1><small>Controle de Vendas</small></div>
       </div>
-      <div class="sync" id="sync"><i class="dot"></i><span>Sincronizado</span></div>
+      <div style="display:flex;align-items:center;gap:10px"><div class="sync" id="sync"><i class="dot"></i><span>Sincronizado</span></div><button class="logout" id="logout" type="button">Sair</button></div>
     </header>
     <main>
       <section class="view active" id="dashboard-view">
@@ -320,6 +331,18 @@
         <button type="button" class="secondary" id="cancel-modal">Cancelar</button>
         <button class="save" type="submit">Salvar venda</button>
       </div>
+    </form>
+  </div>
+
+  <div class="login" id="login">
+    <form class="login-box" id="login-form">
+      <div class="logo">ZD</div>
+      <h2>Financeiro Pessoal</h2>
+      <small>Acesso privado</small>
+      <input id="login-email" type="email" autocomplete="username" placeholder="E-mail" required>
+      <input id="login-pass" type="password" autocomplete="current-password" placeholder="Senha" required>
+      <button type="submit">Entrar</button>
+      <p id="login-error"></p>
     </form>
   </div>
 
@@ -816,12 +839,35 @@
     $('btn-import').addEventListener('click', () => $('file-import').click());
     $('file-import').addEventListener('change', e => { const f = e.target.files[0]; if (f) importBackup(f); e.target.value = ''; });
 
-    // Sincronização em tempo real
-    if (db) {
-      db.channel('vendas-pessoal').on('postgres_changes', { event: '*', schema: 'public', table: 'vendas' }, () => load()).subscribe();
+    // ── Login (acesso privado) ──
+    let channel = null;
+    function startApp() {
+      $('login').classList.remove('show');
+      load();
+      if (!channel) channel = db.channel('vendas-pessoal').on('postgres_changes', { event: '*', schema: 'public', table: 'vendas' }, () => load()).subscribe();
     }
+    function showLogin() {
+      if (channel) { db.removeChannel(channel); channel = null; }
+      vendas = []; render();
+      $('login').classList.add('show');
+    }
+    $('login-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      $('login-error').textContent = '';
+      const { error } = await db.auth.signInWithPassword({ email: $('login-email').value.trim(), password: $('login-pass').value });
+      if (error) { $('login-error').textContent = 'E-mail ou senha incorretos.'; return; }
+      $('login-pass').value = '';
+      startApp();
+    });
+    $('logout').addEventListener('click', async () => { await db.auth.signOut(); showLogin(); });
 
-    load();
+    if (db) {
+      db.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT') showLogin(); });
+      db.auth.getSession().then(({ data }) => data.session ? startApp() : showLogin());
+    } else {
+      $('logout').style.display = 'none';
+      load();
+    }
   })();
   </script>
 </body>
