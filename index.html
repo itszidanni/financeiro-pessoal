@@ -155,6 +155,7 @@
     .setup-banner code{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:2px 6px;color:var(--text);font-family:monospace;font-size:11px}
     .month-bar{display:flex;gap:9px;margin-bottom:11px;align-items:center}
     .month-bar input{flex:1;min-width:0;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:9px;padding:10px 11px;outline:0;min-height:40px}
+    .rng{flex:1;display:grid;gap:4px;font-size:10px;color:var(--muted)}
     .summary{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
     .summary div{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px}
     .summary span{display:block;font-size:10px;color:var(--muted);margin-bottom:5px;text-transform:capitalize}
@@ -223,7 +224,8 @@
 
       <section class="view" id="vendas-view">
         <div class="section-head"><h2>Vendas</h2><span id="sales-count">0 vendas</span></div>
-        <div class="month-bar"><input type="month" id="month-filter" aria-label="Filtrar por mês"><button type="button" id="month-clear" class="filter">Todos os meses</button></div>
+        <div class="month-bar"><input type="month" id="month-filter" aria-label="Filtrar por mês"><button type="button" id="month-clear" class="filter">Limpar</button></div>
+        <div class="month-bar"><label class="rng">De<input type="date" id="date-from"></label><label class="rng">Até<input type="date" id="date-to"></label></div>
         <div class="summary" id="month-summary"></div>
         <div class="toolbar">
           <label class="search">⌕<input id="search" placeholder="Buscar cliente ou produto" autocomplete="off"></label>
@@ -362,7 +364,7 @@
 
     const db = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
-    let vendas = [], activeFilter = 'Todos', searchText = '', monthFilter = '', toastTimer;
+    let vendas = [], activeFilter = 'Todos', searchText = '', monthFilter = '', fromDate = '', toDate = '', toastTimer;
 
     const $ = id => document.getElementById(id);
     const fmt = n => Number(n || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
@@ -441,7 +443,11 @@
 
     const DUE = { 'Atrasadas': d => d < 0, 'Hoje': d => d === 0, 'Em 1 dia': d => d === 1, 'Em 2 dias': d => d === 2, 'Em 3 dias': d => d === 3, 'Até 7 dias': d => d >= 0 && d <= 7 };
     const filters = ['Todos','Pagos','Pendentes','Atrasados','Hoje','Em 1 dia','Em 2 dias','Em 3 dias','Até 7 dias','Parcial','Entregue','Quitado'];
-    function inMonth(v) { return !monthFilter || String(v.data || '').slice(0,7) === monthFilter; }
+    function periodRange() {
+      if (fromDate || toDate) return { from: fromDate || '0000-01-01', to: toDate || '9999-12-31' };
+      return monthFilter ? { from: monthFilter + '-01', to: monthFilter + '-31' } : null;
+    }
+    function inMonth(v) { const r = periodRange(), d = String(v.data || '').slice(0, 10); return !r || (d >= r.from && d <= r.to); }
     function matchesFilter(v) {
       if (!inMonth(v)) return false;
       if (activeFilter === 'Todos') return true;
@@ -455,9 +461,11 @@
       const list = vendas.filter(inMonth).filter(v => v.status !== 'Cancelado');
       const total = list.reduce((s, v) => s + v.valor, 0);
       const rec = list.reduce((s, v) => s + confirmedAmount(v), 0);
-      const lucro = vendas.reduce((s, v) => s + realizedProfit(v, monthFilter).profit, 0);
-      const label = monthFilter ? new Date(monthFilter + '-15T12:00:00').toLocaleDateString('pt-BR', { month:'long', year:'numeric' }) : 'Todos os meses';
-      $('month-summary').innerHTML = `<div><span>${label}</span><b>${list.length} ${list.length === 1 ? 'venda' : 'vendas'}</b></div><div><span>Total vendido</span><b>${fmt(total)}</b></div><div><span>Recebido</span><b style="color:var(--green)">${fmt(rec)}</b></div><div><span>Pendente</span><b style="color:var(--yellow)">${fmt(Math.max(total - rec, 0))}</b></div><div style="grid-column:1/-1"><span>Lucro líquido realizado</span><b style="color:var(--blue)">${fmt(lucro)}</b></div>`;
+      const rg = periodRange();
+      const lucro = vendas.reduce((s, v) => s + realizedProfit(v, rg).profit, 0);
+      const entrou = vendas.filter(v => v.status !== 'Cancelado').reduce((s, v) => s + receipts(v).filter(x => { const d = String(x.d).slice(0, 10); return !rg || (d >= rg.from && d <= rg.to); }).reduce((a, x) => a + x.a, 0), 0);
+      const label = (fromDate || toDate) ? (fromDate && toDate ? `${dateText(fromDate)} a ${dateText(toDate)}` : fromDate ? `A partir de ${dateText(fromDate)}` : `Até ${dateText(toDate)}`) : monthFilter ? new Date(monthFilter + '-15T12:00:00').toLocaleDateString('pt-BR', { month:'long', year:'numeric' }) : 'Todos os meses';
+      $('month-summary').innerHTML = `<div><span>${label}</span><b>${list.length} ${list.length === 1 ? 'venda' : 'vendas'}</b></div><div><span>Total vendido</span><b>${fmt(total)}</b></div><div><span>Recebido (dessas vendas)</span><b style="color:var(--green)">${fmt(rec)}</b></div><div><span>Pendente</span><b style="color:var(--yellow)">${fmt(Math.max(total - rec, 0))}</b></div><div><span>Entrou no período</span><b>${fmt(entrou)}</b></div><div><span>Lucro líquido realizado</span><b style="color:var(--blue)">${fmt(lucro)}</b></div>`;
     }
     function renderSales() {
       renderSummary();
@@ -644,7 +652,7 @@
         if (!Array.isArray(list) || !list.length) throw new Error('Arquivo inválido');
         if (!confirm(`Importar ${list.length} vendas? Vendas com o mesmo ID serão atualizadas.`)) return;
         setSync('working', 'Importando...');
-        const rows = list.map(({ created_at, ...r }) => r);
+        const rows = list.map(({ created_at, user_id, ...r }) => r);
         const { error } = await db.from('vendas').upsert(rows);
         if (error) throw error;
         await load(); notify('Backup importado');
@@ -724,10 +732,11 @@
     function realizedProfit(v, ym) {
       if (v.status === 'Cancelado') return { profit: 0, left: 0 };
       let left = Math.max(moneyOrZero(v.custo), 0), profit = 0;
+      const r = typeof ym === 'string' ? (ym ? { from: ym + '-01', to: ym + '-31' } : null) : ym;
       receipts(v).forEach(({ d, a }) => {
-        const take = Math.min(left, a);
+        const take = Math.min(left, a), day = String(d).slice(0, 10);
         left -= take;
-        if (!ym || String(d).slice(0, 7) === ym) profit += a - take;
+        if (!r || (day >= r.from && day <= r.to)) profit += a - take;
       });
       return { profit, left };
     }
@@ -832,8 +841,9 @@
     $('periodicidade').addEventListener('change', toggleExtras);
     ['entrada','parcela-valor','parcelas-num'].forEach(id => $(id).addEventListener('input', updateInstallmentTotal));
     $('search').addEventListener('input', e => { searchText = e.target.value; renderSales(); });
-    $('month-filter').addEventListener('input', e => { monthFilter = e.target.value; renderSales(); });
-    $('month-clear').addEventListener('click', () => { monthFilter = ''; $('month-filter').value = ''; renderSales(); });
+    $('month-filter').addEventListener('input', e => { monthFilter = e.target.value; fromDate = toDate = ''; $('date-from').value = $('date-to').value = ''; renderSales(); });
+    ['date-from','date-to'].forEach(id => $(id).addEventListener('input', () => { fromDate = $('date-from').value; toDate = $('date-to').value; monthFilter = ''; $('month-filter').value = ''; renderSales(); }));
+    $('month-clear').addEventListener('click', () => { monthFilter = ''; fromDate = toDate = ''; $('month-filter').value = $('date-from').value = $('date-to').value = ''; renderSales(); });
     $('custom-days').addEventListener('input', e => { customDays = e.target.value; renderInstallments(); });
     $('btn-export').addEventListener('click', exportBackup);
     $('btn-import').addEventListener('click', () => $('file-import').click());
@@ -843,6 +853,7 @@
     let channel = null;
     function startApp() {
       $('login').classList.remove('show');
+      db.auth.getSession().then(({ data }) => { const m = data.session?.user?.email; if (m) document.querySelector('.brand .logo').textContent = m.slice(0, 2).toUpperCase(); });
       load();
       if (!channel) channel = db.channel('vendas-pessoal').on('postgres_changes', { event: '*', schema: 'public', table: 'vendas' }, () => load()).subscribe();
     }
